@@ -1,27 +1,24 @@
 extends KinematicBody2D
+tool
 
-export var texture : Texture setget texture_set, texture_get
-export var label : String setget label_set, label_get
-export var startPos : Vector2 setget startPos_set, startPos_get
+export var texture : Texture setget texture_set
+export var label : String setget label_set
+export var startPos : Vector2 setget startPos_set
 
-func texture_set(texture):
-	$Sprite.texture = texture
+func texture_set(value):
+	texture = value
+	$Sprite.texture = value
 
-func texture_get():
-	return $Sprite.texture
 
-func label_set(text):
-	$Label.text = text
+func label_set(value):
+	label = value
+	$Label.text = value
 
-func label_get():
-	return $Label.text
 	
-func startPos_set(position):
-	transform.origin = position * 16
+func startPos_set(value):
+	startPos = value
+	position = value * 16
 	
-func startPos_get():
-	# not technically correct, as the position might have changed, but :shrug:
-	return transform.origin / 16
 	
 enum {
 	IDLE,
@@ -32,7 +29,7 @@ var state = IDLE
 
 const TOLERANCE = 4.0
 
-onready var target_position = transform.origin
+onready var target_position = position
 
 func update_target_position():
 	var target_vector
@@ -61,6 +58,9 @@ func is_at_target_position():
 	return (target_position - position).length() < TOLERANCE
 
 func _physics_process(delta):
+	if Engine.editor_hint:
+		return
+
 	match state:
 		IDLE:
 			state = WANDER

@@ -117,8 +117,6 @@ func loadContents(file: File):
 		event.word8 = file.get_16()
 		event.nextId = file.get_16()
 		events.append(event)
-		
-	file.get_buffer(eventsCount * 12)
 	
 	for npc in npcs:
 		if npc.movementType & 3 != 0:

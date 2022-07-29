@@ -1,3 +1,4 @@
+
 tool
 class_name XLDMap
 extends XLD.Section
@@ -15,6 +16,9 @@ var palette : int
 var combatBackgroundIndex : int
 var animationFrequency : int
 var npcs: Array
+
+var eventTriggers: Array
+var events: Array
 
 const xldPaletteManagerClass = preload("XLDPaletteManager.gd")
 
@@ -81,14 +85,39 @@ func loadContents(file: File):
 		underlayTiles.append(underlayTilesRow)
 		overlayTiles.append(overlayTilesRow)
 		
+	
+	eventTriggers = []
+	
 	var autoeventsCount = file.get_16()
+	
 	file.get_buffer(autoeventsCount * 6)
 	
 	for y in height:
 		var positionedEventsCount = file.get_16()
-		file.get_buffer(positionedEventsCount * 6)
 		
+		for i in positionedEventsCount:
+			var eventTrigger = EventTrigger.new()
+			eventTrigger.position = Vector2(file.get_16()-1, y)
+			eventTrigger.trigger = file.get_16()
+			eventTrigger.eventId = file.get_16()
+			eventTriggers.append(eventTrigger)
+		
+	events = []
 	var eventsCount = file.get_16()
+	
+	for i in eventsCount:
+		var event = Event.new()
+		event.type = file.get_8()
+		event.byte1 = file.get_8()
+		event.byte2 = file.get_8()
+		event.byte3 = file.get_8()
+		event.byte4 = file.get_8()
+		event.byte5 = file.get_8()
+		event.word6 = file.get_16()
+		event.word8 = file.get_16()
+		event.nextId = file.get_16()
+		events.append(event)
+		
 	file.get_buffer(eventsCount * 12)
 	
 	for npc in npcs:
@@ -112,3 +141,78 @@ class NPC:
 	var movementType
 	var unknown2
 	var positions
+	
+	
+enum EVENT_TRIGGER {
+	None = 0,
+	Normal = 1,
+	Examine = 2,
+	Touch = 4,
+	Speak = 8,
+	UseItem = 16,
+	MapInit = 32,
+	EveryStep = 64,
+	EveryHour = 128,
+	EveryDay = 256,
+	Default = 512,
+	Action = 1024,
+	NPC = 2048,
+	Take = 4096,
+}
+
+class EventTrigger:
+	var position: Vector2
+	var trigger #: EVENT_TRIGGER (bit mask)
+	var eventId: int
+		
+	
+enum EventType {
+	Script = 0,
+	MapExit = 1,
+	Door = 2,
+	Chest = 3,
+	Text = 4,
+	Spinner = 5,
+	Trap = 6,
+	ChangeUsedItem = 7,
+	DataChange = 8,
+	ChangeIcon = 9,
+	Encounter = 10,
+	PlaceAction = 11,
+	Query = 12,
+	Modify = 13,
+	Action = 14,
+	Signal = 15,
+	CloneAutomap = 16,
+	Sound = 17,
+	StartDialogue = 18,
+	CreateTransport = 19,
+	Execute = 20,
+	RemovePartyMember = 21,
+	EndDialogue = 22,
+	Wipe = 23,
+	PlayAnimation = 24,
+	Offset = 25,
+	Pause = 26,
+	SimpleChest = 27,
+	AskSurrender = 28,
+	DoScript = 29,
+}
+
+
+class Event:
+	var type : int #EventType
+	var byte1 : int
+	var byte2: int
+	var byte3: int
+	var byte4: int
+	var byte5: int
+	var word6: int
+	var word8: int
+	var nextId : int
+
+static func getEventTypeName(typeNumber):
+	for typeName in EventType:
+		if EventType[typeName] == typeNumber:
+			return typeName
+	return "unknown"

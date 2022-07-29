@@ -30,6 +30,11 @@ _global_script_classes=[ {
 "path": "res://addons/xld_importer/XLDMap.gd"
 }, {
 "base": "",
+"class": "XLDMapText",
+"language": "GDScript",
+"path": "res://addons/xld_importer/XLDMapText.gd"
+}, {
+"base": "",
 "class": "XLDSprite",
 "language": "GDScript",
 "path": "res://addons/xld_importer/XLDSprite.gd"
@@ -39,6 +44,7 @@ _global_script_class_icons={
 "XLDIconData": "",
 "XLDIconSprite": "",
 "XLDMap": "",
+"XLDMapText": "",
 "XLDSprite": ""
 }
 
@@ -52,9 +58,17 @@ config/icon="res://icon.png"
 
 xldPaletteManager="*res://addons/xld_importer/XLDPaletteManager.gd"
 
+[debug]
+
+shapes/collision/shape_color=Color( 1, 1, 1, 0.419608 )
+
 [editor_plugins]
 
 enabled=PoolStringArray( "res://addons/xld_importer/plugin.cfg" )
+
+[global]
+
+shape=false
 
 [input]
 

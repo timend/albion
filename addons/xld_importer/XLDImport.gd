@@ -142,6 +142,61 @@ func setCell(v, layers, layerOffsets, tileIndex, tileMeta, owner ):
 #			owner.add_child(textNode)
 #			textNode.owner = owner
 
+
+func createEvent(eventTrigger, eventScene, mapScript : File, xldMap : XLDMap, xldMapText : XLDMapText, root : Node2D):
+	var eventTriggerNode : Area2D = eventScene.instance()
+	eventTriggerNode.name = "EventTrigger %d" % [eventTrigger.eventId]
+	root.add_child(eventTriggerNode)
+	eventTriggerNode.owner = root
+	eventTriggerNode.eventId = eventTrigger.eventId
+	# Technically the type of trigger could differ per triggering tile,
+	# but we assume it's the same for now
+	eventTriggerNode.triggerTypes = eventTrigger.trigger
+	
+	var eventMethodName = "_Event%d" % eventTrigger.eventId
+	
+	if eventTrigger.trigger & XLDMap.EVENT_TRIGGER.Examine:
+		eventTriggerNode.connect("examine", root, eventMethodName, [], CONNECT_PERSIST)
+		
+	if eventTrigger.trigger & XLDMap.EVENT_TRIGGER.Touch:
+		eventTriggerNode.connect("touch", root, eventMethodName, [], CONNECT_PERSIST)
+	
+	mapScript.store_line("func " + eventMethodName + "():")
+	
+	var eventId = eventTrigger.eventId
+	
+	var eventsPassed = {}
+	
+	while eventId != 0xFFFF:
+		if eventsPassed.has(eventId):
+			mapScript.store_line("# loop back to event %d" % eventId )
+			break
+		eventsPassed[eventId] = true
+		
+		var event = xldMap.events[eventId]
+		
+		var eventTypeName = XLDMap.getEventTypeName(event.type)
+		
+		match event.type:
+			XLDMap.EventType.Text:
+				var textType = event.byte1
+				var textId = event.byte5
+				var text = xldMapText.texts[textId]
+				mapScript.store_line("  get_node(\"/root/Node2D/\").event%s(%s, \"%s\")" % [eventTypeName, textType, text.c_escape() ])
+			_:
+				mapScript.store_line("# Event ID %d - Type %s" % [eventId, eventTypeName])
+		
+		if !event:
+			mapScript.store_line('# unknown event ID %d' % eventId)
+			break
+			
+		eventId = event.nextId
+	
+	mapScript.store_line("  pass")
+	mapScript.store_line("")
+	
+	return eventTriggerNode
+				
 func importMaps():
 	print("Starting import of tilemaps")
 	
@@ -152,6 +207,12 @@ func importMaps():
 
 	var xldMap : XLDMap = xld.sections[11]	
 	xldMap.load()
+	
+	var mapTextXld = XLD.new()
+	mapTextXld.load("res://XLDLIBS/ENGLISH/MAPTEXT1.XLD", funcref(XLDMapText, "new"))
+	
+	var xldMapText = mapTextXld.sections[11]
+	xldMapText.load()
 	
 	print("Loaded Map 11")
 	
@@ -189,7 +250,7 @@ func importMaps():
 #	inlay.cell_y_sort = true
 #	inlayMinus16.cell_y_sort = true
 #	inlayMinus32.cell_y_sort = true
-#
+
 	
 	var tileMeta = tileset.get_meta("tile_meta")
 	
@@ -228,6 +289,63 @@ func importMaps():
 
 			ysort.add_child(npcScene)
 			npcScene.owner = root
+			
+	# display events
+	
+	var dir = Directory.new()
+	dir.remove("res://xldimports/tilemap_0.gd")
+
+	var mapScript = File.new()
+	mapScript.open("res://xldimports/tilemap_0.gd", File.WRITE)
+	mapScript.store_line("extends Node2D")
+	mapScript.store_line("")
+	
+	
+	var eventScene = preload( "res://map_event.tscn" )
+	
+	var triggerNodeByEventId = {}
+	for eventTrigger in xldMap.eventTriggers:
+#		var textNode = Label.new()
+#		var v = eventTrigger.position
+#		textNode.name = "EventTrigger %s_%s" % [v.x, v.y]
+		
+#		var triggerText = ""
+#		for triggerName in XLDMap.EVENT_TRIGGER:
+#				if XLDMap.EVENT_TRIGGER[triggerName] & eventTrigger.trigger:
+#					triggerText += " " + triggerName
+#		var triggerText = ""
+#		var eventType = xldMap.events[eventTrigger.eventId]
+#
+#		for eventTypeName in XLDMap.EventType:
+#			if XLDMap.EventType[eventTypeName] == eventType:
+#				triggerText += eventTypeName
+#
+#		textNode.text = triggerText
+#		textNode.margin_top = v.y * 16
+#		textNode.margin_left = v.x * 16
+#		root.add_child(textNode)
+#		textNode.owner = root
+		
+		var v = eventTrigger.position
+		
+		if !triggerNodeByEventId.has(eventTrigger.eventId):
+			var eventTriggerNode = createEvent(eventTrigger, eventScene, mapScript, xldMap, xldMapText, root)
+			triggerNodeByEventId[eventTrigger.eventId] = eventTriggerNode
+			
+		
+		var eventTriggerNode : Area2D = triggerNodeByEventId[eventTrigger.eventId] 
+		
+		var collision2d = CollisionShape2D.new()
+		collision2d.shape = RectangleShape2D.new()
+		collision2d.shape.extents = Vector2(8, 8)
+		collision2d.position = v * 16 + Vector2(8,8)
+		
+		eventTriggerNode.add_child(collision2d)
+		collision2d.owner = root
+	
+	mapScript.close()
+	
+	root.set_script(load("res://xldimports/tilemap_0.gd"))
 	
 	var packed_scene = PackedScene.new()
 	packed_scene.pack(root)

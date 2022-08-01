@@ -15,6 +15,11 @@ _global_script_classes=[ {
 "path": "res://addons/xld_importer/XLD.gd"
 }, {
 "base": "",
+"class": "XLDBlockList",
+"language": "GDScript",
+"path": "res://addons/xld_importer/XLDBlockList.gd"
+}, {
+"base": "",
 "class": "XLDIconData",
 "language": "GDScript",
 "path": "res://addons/xld_importer/XLDIconData.gd"
@@ -23,6 +28,11 @@ _global_script_classes=[ {
 "class": "XLDIconSprite",
 "language": "GDScript",
 "path": "res://addons/xld_importer/XLDIconSprite.gd"
+}, {
+"base": "Button",
+"class": "XLDImport",
+"language": "GDScript",
+"path": "res://addons/xld_importer/XLDImport.gd"
 }, {
 "base": "",
 "class": "XLDMap",
@@ -41,8 +51,10 @@ _global_script_classes=[ {
 } ]
 _global_script_class_icons={
 "XLD": "",
+"XLDBlockList": "",
 "XLDIconData": "",
 "XLDIconSprite": "",
+"XLDImport": "",
 "XLDMap": "",
 "XLDMapText": "",
 "XLDSprite": ""

@@ -1,5 +1,6 @@
 tool
 extends Button
+class_name XLDImport
 
 # Called when the node enters the scene tree for the first time.
 func _ready():
@@ -100,15 +101,15 @@ func importTilesets():
 	print("Finished import of tilesets")
 
 
-func addLayers(parent: Node2D, owner: Node2D, name: String, tileSet: TileSet, cellYSort: bool):
+func addLayers(parent: Node2D, owner: Node2D, name: String, tileSet: TileSet, cellYSort: bool, layerOffset : Vector2):
 	var layers = []
 	
-	layers.append(addLayer(parent, owner, name + "_1", tileSet, cellYSort))
-	layers.append(addLayer(parent, owner, name + "_2", tileSet, cellYSort))
+	layers.append(addLayer(parent, owner, name + "_0", tileSet, cellYSort, layerOffset))
+	layers.append(addLayer(parent, owner, name + "_1", tileSet, cellYSort, layerOffset))
 	
 	return layers
 
-func addLayer(parent: Node2D, owner: Node2D, name: String, tileSet: TileSet, cellYSort: bool) -> TileMap:
+func addLayer(parent: Node2D, owner: Node2D, name: String, tileSet: TileSet, cellYSort: bool, layerOffset: Vector2) -> TileMap:
 	var layer = TileMap.new()
 	parent.add_child(layer)
 	layer.owner = owner
@@ -117,20 +118,27 @@ func addLayer(parent: Node2D, owner: Node2D, name: String, tileSet: TileSet, cel
 	layer.tile_set = tileSet
 	layer.cell_tile_origin = TileMap.TILE_ORIGIN_BOTTOM_LEFT
 	layer.cell_y_sort = cellYSort
+	layer.set_meta("layerOffset", layerOffset)
 	return layer
+
 	
-func setCell(v, layers, layerOffsets, tileIndex, tileMeta, owner ): 
+static func clearCell(v, tilesetLayers, layerIndex ): 
+	for layers in tilesetLayers.values():
+		var layer : TileMap = layers[layerIndex]
+		var cellv = v + layer.get_meta("layerOffset")	
+		layer.set_cellv(cellv, -1)
+		
+static func setCell(v, tilesetLayers, tileIndex, tileMeta, layerIndex ): 
 	if tileMeta.has(tileIndex):
-		var layer = tileMeta[tileIndex].layer
+		var layerType = tileMeta[tileIndex].layer
+		var layer: TileMap = tilesetLayers[layerType][layerIndex]
+		var cellv = v + layer.get_meta("layerOffset")	
+		layer.set_cellv(cellv, tileIndex)
+#		print("Setting tile at ", cellv, " for layer ", layer, " to ", tileIndex)
+#	else:
+#		print("No metadata known for tileIndex ", tileIndex, " in metadata ", tileMeta)
 		
-		var cellv = v + layerOffsets[layer]
-		
-		if layers[layer][0].get_cellv(cellv) == -1:
-			layers[layer][0].set_cellv(cellv, tileIndex)
-		else:
-			layers[layer][1].set_cellv(cellv, tileIndex)
-			
-		var collision = tileMeta[tileIndex].collision
+		#var collision = tileMeta[tileIndex].collision
 		
 		# Code to display some numerical value per tile
 #		if collision > 0:
@@ -142,6 +150,92 @@ func setCell(v, layers, layerOffsets, tileIndex, tileMeta, owner ):
 #			owner.add_child(textNode)
 #			textNode.owner = owner
 
+func generateEventCode(mapScript : File, xldMap : XLDMap, xldMapText : XLDMapText, eventsPassed, eventId, indentation):
+	if eventId == 0xFFFF:
+		mapScript.store_line(indentation + "pass # eventId = 0xFFFF")
+
+	while eventId != 0xFFFF:
+		if eventsPassed.has(eventId):
+			mapScript.store_line(indentation + "pass # loop back to event %d" % eventId )
+			break	
+			
+		eventsPassed[eventId] = true
+		
+		var event = xldMap.events[eventId]
+
+		if !event:
+			mapScript.store_line(indentation + 'pass # unknown event ID %d' % eventId)
+			break
+		
+		var eventTypeName = XLDMap.getEventTypeName(event.type)
+		
+		match event.type:
+			XLDMap.EventType.Text:
+				var textType = event.byte1
+				var textId = event.byte5
+				var text = xldMapText.texts[textId]
+				mapScript.store_line(indentation + "get_node(\"/root/Node2D/\").showText(%s, \"%s\")" % [textType, text.c_escape() ])
+			XLDMap.EventType.Query:
+				var queryType = event.byte1
+				var otherNextEvent = event.word8
+				
+				var condition = "true"
+				match queryType:
+					XLDMap.QueryType.CheckTriggerAction:
+						var triggerTypeName = XLDMap.getTriggerTypeName(1 << event.word6)
+						condition = "eventTriggerType == XLDMap.EVENT_TRIGGER.%s" % triggerTypeName
+				
+				mapScript.store_line(indentation + "if %s: #%s" % [condition, XLDMap.getQueryTypeName(queryType)])
+				generateEventCode(mapScript, xldMap, xldMapText, eventsPassed.duplicate(), event.nextId, indentation + "    ")
+				
+				if otherNextEvent != 0xFFFF:
+					mapScript.store_line(indentation + "else:")
+					generateEventCode(mapScript, xldMap, xldMapText, eventsPassed.duplicate(), otherNextEvent, indentation + "    ")
+				
+				break
+			XLDMap.EventType.ChangeMap:
+				var changeType = event.byte4
+				# Turn into signed bytes
+				var x = event.byte1 if event.byte1 & 0x80 == 0 else -(0x100 - event.byte1)
+				var y = event.byte2 if event.byte2 & 0x80 == 0 else -(0x100 - event.byte2)
+				var absolutePosition = event.byte3 & 1 == 0
+				var persistentChange = "true" if event.byte3 & 2 == 0 else "false"
+				
+				var positionExpression = "Vector2(%d, %d)" % [x, y]
+				
+				if !absolutePosition:
+					positionExpression = "tilePosition + " + positionExpression
+				
+				match changeType:
+#					XLDMap.ChangeMapType.ChangeTileEvent:
+#						var newEventId = event.word6
+#						mapScript.store_line(indentation 
+#						+ "get_node(\"/root/Node2D/\").changeTileEvent(%s, %s, %d)" % [positionExpression, persistentChange, newEventId])
+					XLDMap.ChangeMapType.ChangeLayer0Tile:
+						var newTileId = event.word6
+						mapScript.store_line(indentation
+						+ "get_node(\"/root/Node2D/\").changeTile(0, %s, %s, %d)" % [positionExpression, persistentChange, newTileId])
+					XLDMap.ChangeMapType.ChangeLayer1Tile:
+						var newTileId = event.word6
+						mapScript.store_line(indentation
+						+ "get_node(\"/root/Node2D/\").changeTile(1, %s, %s, %d)" % [positionExpression, persistentChange, newTileId])
+					XLDMap.ChangeMapType.ChangeTileObjectNoOverwrite:
+						var layersBitset = event.byte5
+						var blockListId = event.word6
+						mapScript.store_line(indentation
+						+ "get_node(\"/root/Node2D/\").placeTileObject(%s, %d, %d, %s, false)" % [positionExpression, blockListId, layersBitset, persistentChange])
+					XLDMap.ChangeMapType.ChangeTileObjectOverwrite:
+						var layersBitset = event.byte5
+						var blockListId = event.word6
+						mapScript.store_line(indentation
+						+ "get_node(\"/root/Node2D/\").placeTileObject(%s, %d, %d, %s, true)" % [positionExpression, blockListId, layersBitset, persistentChange])
+					_:
+						var changeTypeName = XLDMap.getChangeMapTypeName(changeType)
+						mapScript.store_line(indentation + "pass # Event ID %d - Type ChangeMap - ChangeType %s" % [eventId, changeTypeName])
+			_:
+				mapScript.store_line(indentation + "pass # Event ID %d - Type %s" % [eventId, eventTypeName])
+			
+		eventId = event.nextId
 
 func createEvent(eventTrigger, eventScene, mapScript : File, xldMap : XLDMap, xldMapText : XLDMapText, root : Node2D):
 	var eventTriggerNode : Area2D = eventScene.instance()
@@ -161,38 +255,18 @@ func createEvent(eventTrigger, eventScene, mapScript : File, xldMap : XLDMap, xl
 	if eventTrigger.trigger & XLDMap.EVENT_TRIGGER.Touch:
 		eventTriggerNode.connect("touch", root, eventMethodName, [], CONNECT_PERSIST)
 	
-	mapScript.store_line("func " + eventMethodName + "():")
+	if eventTrigger.trigger & XLDMap.EVENT_TRIGGER.Take:
+		eventTriggerNode.connect("take", root, eventMethodName, [], CONNECT_PERSIST)
+	
+	
+	mapScript.store_line("func " + eventMethodName + "(eventTriggerType, tilePosition):")
 	
 	var eventId = eventTrigger.eventId
 	
 	var eventsPassed = {}
 	
-	while eventId != 0xFFFF:
-		if eventsPassed.has(eventId):
-			mapScript.store_line("# loop back to event %d" % eventId )
-			break
-		eventsPassed[eventId] = true
-		
-		var event = xldMap.events[eventId]
-		
-		var eventTypeName = XLDMap.getEventTypeName(event.type)
-		
-		match event.type:
-			XLDMap.EventType.Text:
-				var textType = event.byte1
-				var textId = event.byte5
-				var text = xldMapText.texts[textId]
-				mapScript.store_line("  get_node(\"/root/Node2D/\").event%s(%s, \"%s\")" % [eventTypeName, textType, text.c_escape() ])
-			_:
-				mapScript.store_line("# Event ID %d - Type %s" % [eventId, eventTypeName])
-		
-		if !event:
-			mapScript.store_line('# unknown event ID %d' % eventId)
-			break
-			
-		eventId = event.nextId
+	generateEventCode(mapScript, xldMap, xldMapText, eventsPassed, eventId, "    ")
 	
-	mapScript.store_line("  pass")
 	mapScript.store_line("")
 	
 	return eventTriggerNode
@@ -228,24 +302,17 @@ func importMaps():
 	
 	var layers = {}
 	
-	layers[XLDIconData.TILE_LAYER.UNDERLAY] = addLayers(root, root, "Underlay", tileset, false)
+	layers[XLDIconData.TILE_LAYER.UNDERLAY] = addLayers(root, root, "Underlay", tileset, false, Vector2(0, 0))
 	
 	var ysort = YSort.new()
 	ysort.name = "YSort"
 	root.add_child(ysort)
 	ysort.owner = root
 	
-	layers[XLDIconData.TILE_LAYER.DYNAMIC_1] = addLayers(ysort, root, "Inlay", tileset, true)
-	layers[XLDIconData.TILE_LAYER.DYNAMIC_2] =  addLayers(ysort, root, "InlayMinus16", tileset, true)
-	layers[XLDIconData.TILE_LAYER.DYNAMIC_3] = addLayers(ysort, root, "InlayMinus32", tileset, true)
-	layers[XLDIconData.TILE_LAYER.OVERLAY] = addLayers(root, root, "Overlay", tileset, false)
-	
-	var layerOffsets = {}
-	layerOffsets[XLDIconData.TILE_LAYER.UNDERLAY] = Vector2(0, 0) 
-	layerOffsets[XLDIconData.TILE_LAYER.DYNAMIC_1] = Vector2(0, 0) 
-	layerOffsets[XLDIconData.TILE_LAYER.DYNAMIC_2] =  Vector2(0, 1) 
-	layerOffsets[XLDIconData.TILE_LAYER.DYNAMIC_3] = Vector2(0, 2) 
-	layerOffsets[XLDIconData.TILE_LAYER.OVERLAY] = Vector2(0, 0) 
+	layers[XLDIconData.TILE_LAYER.DYNAMIC_1] = addLayers(ysort, root, "Inlay", tileset, true, Vector2(0, 0))
+	layers[XLDIconData.TILE_LAYER.DYNAMIC_2] =  addLayers(ysort, root, "InlayMinus16", tileset, true, Vector2(0, 1))
+	layers[XLDIconData.TILE_LAYER.DYNAMIC_3] = addLayers(ysort, root, "InlayMinus32", tileset, true, Vector2(0, 2) )
+	layers[XLDIconData.TILE_LAYER.OVERLAY] = addLayers(root, root, "Overlay", tileset, false, Vector2(0, 0))
 	
 #	inlay.cell_y_sort = true
 #	inlayMinus16.cell_y_sort = true
@@ -256,9 +323,8 @@ func importMaps():
 	
 	for x in xldMap.width:
 		for y in xldMap.height:
-			setCell(Vector2(x, y), layers, layerOffsets, xldMap.underlayTiles[y][x], tileMeta, root )
-			
-			setCell(Vector2(x, y), layers, layerOffsets, xldMap.overlayTiles[y][x], tileMeta, root )
+			setCell(Vector2(x, y), layers, xldMap.tileLayers[0][y][x], tileMeta, 0 )
+			setCell(Vector2(x, y), layers, xldMap.tileLayers[1][y][x], tileMeta, 1 )
 			
 			
 	var xldGraphics = XLD.new()
@@ -298,6 +364,8 @@ func importMaps():
 	var mapScript = File.new()
 	mapScript.open("res://xldimports/tilemap_0.gd", File.WRITE)
 	mapScript.store_line("extends Node2D")
+	mapScript.store_line("")
+	mapScript.store_line("export var tilesetId = %d" % xldMap.tilesetId)
 	mapScript.store_line("")
 	
 	

@@ -7,8 +7,7 @@ var width : int
 var height : int
 var npcCount: int
 var flags: int
-var underlayTiles : Array
-var overlayTiles : Array
+var tileLayers : Array
 var soundIndex : int
 var mapType : int
 var tilesetId : int
@@ -22,6 +21,24 @@ var events: Array
 
 const xldPaletteManagerClass = preload("XLDPaletteManager.gd")
 
+static func loadTiles(width, height, layers, file):
+	layers.append([])
+	layers.append([])
+	
+	for y in height:
+		var layer0TilesRow = []
+		var layer1TilesRow = []
+		for x in width:
+			var data1 = file.get_8()
+			var data2 = file.get_8()
+			var data3 = file.get_8()
+			# 12 bits for each of the two layers
+			var layer1Tile = ((data1<<4)|((data2&0xF0)>>4)) 
+			var layer0Tile = (data3|((data2&0x0F)<<8))
+			layer0TilesRow.append(layer0Tile)
+			layer1TilesRow.append(layer1Tile)
+		layers[0].append(layer0TilesRow)
+		layers[1].append(layer1TilesRow)
 
 func loadContents(file: File):
 	print("Loading some XLDMap")
@@ -64,27 +81,9 @@ func loadContents(file: File):
 		npcs.append(npc)
 	
 	#file.get_buffer((npcCountReserved - npcCount) * 10)
+	tileLayers = []
 	
-	underlayTiles = []
-	overlayTiles = []
-	
-	print("Starting to read tile data at offset", file.get_position())
-	
-	for y in height:
-		var underlayTilesRow = []
-		var overlayTilesRow = []
-		for x in width:
-			var data1 = file.get_8()
-			var data2 = file.get_8()
-			var data3 = file.get_8()
-			# 12 bits for overlay + 12 bits for underlay
-			var overlay = ((data1<<4)|((data2&0xF0)>>4)) 
-			var underlay = (data3|((data2&0x0F)<<8))
-			underlayTilesRow.append(underlay)
-			overlayTilesRow.append(overlay)
-		underlayTiles.append(underlayTilesRow)
-		overlayTiles.append(overlayTilesRow)
-		
+	loadTiles(width, height, tileLayers, file)
 	
 	eventTriggers = []
 	
@@ -174,7 +173,7 @@ enum EventType {
 	Trap = 6,
 	ChangeUsedItem = 7,
 	DataChange = 8,
-	ChangeIcon = 9,
+	ChangeMap = 9,
 	Encounter = 10,
 	PlaceAction = 11,
 	Query = 12,
@@ -209,8 +208,55 @@ class Event:
 	var word8: int
 	var nextId : int
 
-static func getEventTypeName(typeNumber):
-	for typeName in EventType:
-		if EventType[typeName] == typeNumber:
+static func getTypeName(typeDictionary, typeNumber):
+	for typeName in typeDictionary:
+		if typeDictionary[typeName] == typeNumber:
 			return typeName
-	return "unknown"
+	return "unknown %d" % typeNumber
+
+static func getEventTypeName(typeNumber):
+	return getTypeName(EventType, typeNumber)
+
+enum QueryType {
+	CheckTemporarySwitch = 0x00,
+	CheckPartyMemberPresent = 0x05,
+	CheckPartyItemInInventory = 0x06,
+	CheckUsedItemId = 0x07,
+	CheckLastActionSuccessful = 0x09,
+	CheckScriptDebugMode = 0x0A,
+	CheckNPCActive = 0x0E,
+	CheckPartyGold = 0x0F,
+	CheckRandomCall = 0x11,
+	CheckTriggerAction = 0x14,
+	CheckPartyMemberConscious = 0x15,
+	CheckPartyLeader = 0x1A,
+	CheckTicker = 0x1C,
+	CheckCurrentMapId = 0x1D,
+	SendQueryToPlayer = 0x1F,
+	CompareTriggerType = 0x20,
+	CheckEventAlreadyUsed = 0x22,
+	CheckDemoVersion = 0x23,
+	CheckNumberInput = 0x2B
+}
+
+static func getQueryTypeName(typeNumber):
+	return getTypeName(QueryType, typeNumber)
+
+static func getTriggerTypeName(typeNumber):
+	return getTypeName(EVENT_TRIGGER, typeNumber)
+	
+enum ChangeMapType {
+	ChangeLayer0Tile = 0x00,
+	ChangeLayer1Tile = 0x01,
+	Change3DWall = 0x02,
+	Change3DFloor = 0x03,
+	Change3DCeiling = 0x04,
+	ChangeNPCMovementType = 0x05,
+	ChangeNPCSprite = 0x06,
+	ChangeTileEvent = 0x07,
+	ChangeTileObjectOverwrite = 0x08,
+	ChangeTileObjectNoOverwrite = 0x09
+}
+
+static func getChangeMapTypeName(typeNumber):
+	return getTypeName(ChangeMapType, typeNumber)

@@ -517,9 +517,12 @@ func importPartyGraphics():
 func _on_XLD_pressed():
 	print("Starting XLDImport")
 	
-	importTilesets()
-	importMaps()
+	#importTilesets()
+	#importMaps()
 	#importPartyGraphics()
+	
+	var mainExe = MainExe.new()
+	mainExe.importGraphics()
 	
 	#editorInterface.get_resource_filesystem().scan_resources()
 

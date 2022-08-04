@@ -3,6 +3,12 @@ tool
 class_name XLDMap
 extends XLD.Section
 
+
+enum MapType {
+	T_3D = 1,
+	T_2D = 2
+}
+
 var width : int
 var height : int
 var npcCount: int
@@ -18,6 +24,11 @@ var npcs: Array
 
 var eventTriggers: Array
 var events: Array
+
+# Only 3D
+var floorLayer: Array
+var wallLayer: Array
+var ceilingLayer: Array
 
 const xldPaletteManagerClass = preload("XLDPaletteManager.gd")
 
@@ -41,15 +52,10 @@ static func loadTiles(width, height, layers, file):
 		layers[1].append(layer1TilesRow)
 
 func loadContents(file: File):
-	print("Loading some XLDMap")
 	
 	flags = file.get_8()
 	npcCount = file.get_8()
 	mapType = file.get_8()
-	
-	# only parse 2D maps
-	assert(mapType == 2)
-	
 	soundIndex = file.get_8()
 	width = file.get_8()
 	height = file.get_8()
@@ -58,6 +64,8 @@ func loadContents(file: File):
 	palette = file.get_8()
 	animationFrequency = file.get_8()
 	
+	print("Loading XLDMap %s[%d]. Type: %s Dimensions: %dx%d" % [file.get_path(), index, 
+		"2D" if mapType == MapType.T_2D else "3D", width, height])
 	
 	var npcCountReserved
 	if npcCount == 0:
@@ -83,48 +91,66 @@ func loadContents(file: File):
 	#file.get_buffer((npcCountReserved - npcCount) * 10)
 	tileLayers = []
 	
-	loadTiles(width, height, tileLayers, file)
-	
-	eventTriggers = []
-	
-	var autoeventsCount = file.get_16()
-	
-	file.get_buffer(autoeventsCount * 6)
-	
-	for y in height:
-		var positionedEventsCount = file.get_16()
+	if mapType == MapType.T_2D:
+		loadTiles(width, height, tileLayers, file)
 		
-		for i in positionedEventsCount:
-			var eventTrigger = EventTrigger.new()
-			eventTrigger.position = Vector2(file.get_16()-1, y)
-			eventTrigger.trigger = file.get_16()
-			eventTrigger.eventId = file.get_16()
-			eventTriggers.append(eventTrigger)
+		eventTriggers = []
 		
-	events = []
-	var eventsCount = file.get_16()
-	
-	for i in eventsCount:
-		var event = Event.new()
-		event.type = file.get_8()
-		event.byte1 = file.get_8()
-		event.byte2 = file.get_8()
-		event.byte3 = file.get_8()
-		event.byte4 = file.get_8()
-		event.byte5 = file.get_8()
-		event.word6 = file.get_16()
-		event.word8 = file.get_16()
-		event.nextId = file.get_16()
-		events.append(event)
-	
-	for npc in npcs:
-		if npc.movementType & 3 != 0:
-			npc.positions = [Vector2(file.get_8()-1, file.get_8()-1)]
-		else:
-			npc.positions = []
-			for i in 0x480:
-				npc.positions.append(Vector2(file.get_8()-1, file.get_8()-1))
+		var autoeventsCount = file.get_16()
+		
+		file.get_buffer(autoeventsCount * 6)
+		
+		for y in height:
+			var positionedEventsCount = file.get_16()
 			
+			for i in positionedEventsCount:
+				var eventTrigger = EventTrigger.new()
+				eventTrigger.position = Vector2(file.get_16()-1, y)
+				eventTrigger.trigger = file.get_16()
+				eventTrigger.eventId = file.get_16()
+				eventTriggers.append(eventTrigger)
+			
+		events = []
+		var eventsCount = file.get_16()
+		
+		for i in eventsCount:
+			var event = Event.new()
+			event.type = file.get_8()
+			event.byte1 = file.get_8()
+			event.byte2 = file.get_8()
+			event.byte3 = file.get_8()
+			event.byte4 = file.get_8()
+			event.byte5 = file.get_8()
+			event.word6 = file.get_16()
+			event.word8 = file.get_16()
+			event.nextId = file.get_16()
+			events.append(event)
+		
+		for npc in npcs:
+			if npc.movementType & 3 != 0:
+				npc.positions = [Vector2(file.get_8()-1, file.get_8()-1)]
+			else:
+				npc.positions = []
+				for i in 0x480:
+					npc.positions.append(Vector2(file.get_8()-1, file.get_8()-1))
+	else:
+		print("Loading 3D grid of map")
+		floorLayer = []
+		wallLayer = []
+		ceilingLayer = []
+		
+		for y in height:
+			var floorRow = []
+			var wallRow = []
+			var ceilingRow = []
+			for x in width:
+				wallRow.append(file.get_8())
+				floorRow.append(file.get_8())
+				ceilingRow.append(file.get_8())
+			floorLayer.append(floorRow)
+			wallLayer.append(wallRow)
+			ceilingLayer.append(ceilingRow)
+		
 	print("Loading some XLDMap finished")
 
 

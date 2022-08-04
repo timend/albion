@@ -8,6 +8,8 @@ func _ready():
 
 var editorInterface: EditorInterface
 
+const WALL_MESHLIB_INDEX_OFFSET = 4096
+
 func importTilesets():
 	print("Starting import of tilesets")
 	
@@ -100,6 +102,71 @@ func importTilesets():
 		ResourceSaver.save("res://xldimports/tileset_%d.res" % [tilesetIndex + 1], tileset)
 	print("Finished import of tilesets")
 
+func importMeshLibrary():
+	print("Starting import of mesh libraries")
+	
+	var xldLabData = XLD.new()
+	xldLabData.load("res://XLDLIBS/LABDATA1.XLD", funcref(XLDLabData, "new"))
+	
+	# TODO: Read from Mapdata
+	var paletteIndex = 14
+	
+	for labdataIndex in range(106,107): 
+		print("Loading LabData ", labdataIndex)
+		var labData : XLDLabData = xldLabData.sections[labdataIndex % 100]
+		labData.paletteIndex = paletteIndex
+		labData.load()
+	
+		print("Loaded LabData ", labdataIndex)
+
+#		var texture = ImageTexture.new()
+#		texture.create_from_image(iconSprite.image, 0)
+#
+#		var iconSize = Vector2(iconSprite.width, iconSprite.height)
+
+
+		var meshLibrary = MeshLibrary.new()
+		var meshMeta = {}
+			
+		
+		for floorIndex in labData.floors.size():
+			var floorData = labData.floors[floorIndex]
+			meshLibrary.create_item(floorIndex)
+			var mesh = QuadMesh.new()
+			mesh.center_offset = Vector3(0, 0, -0.5)
+			
+			var material = SpatialMaterial.new()
+		
+			material.albedo_texture = floorData.texture
+
+			mesh.material = material
+			
+			meshLibrary.set_item_mesh(floorIndex, mesh)
+			meshLibrary.set_item_name(floorIndex, "Floor %d" % floorIndex)
+			meshLibrary.set_item_preview(floorIndex, floorData.texture)
+			var transform = Transform.IDENTITY.rotated(Vector3.RIGHT, -PI/2).rotated(Vector3.UP, -PI/2)
+			meshLibrary.set_item_mesh_transform(floorIndex, transform)
+		
+		for wallIndex in labData.walls.size():
+			var wallData = labData.walls[wallIndex]
+			var itemIndex = wallIndex + WALL_MESHLIB_INDEX_OFFSET
+			meshLibrary.create_item(itemIndex)
+			var mesh = CubeMesh.new()
+			mesh.size = Vector3(1, 1, 1)
+	
+			var material = SpatialMaterial.new()
+			material.albedo_texture = wallData.texture
+			material.uv1_scale = Vector3(3, 2, 1)
+			mesh.material = material
+			
+			meshLibrary.set_item_mesh(itemIndex, mesh)
+			meshLibrary.set_item_name(itemIndex, "Wall %d (%d overlays)" % [wallIndex, wallData.overlayCount])
+			meshLibrary.set_item_preview(itemIndex, wallData.texture)
+		
+		meshLibrary.set_meta("mesh_meta", meshMeta)	
+
+		ResourceSaver.save("res://xldimports/meshlib_%d_12.res" % [labdataIndex + 1], meshLibrary)
+	print("Finished import of tilesets")
 
 func addLayers(parent: Node2D, owner: Node2D, name: String, tileSet: TileSet, cellYSort: bool, layerOffset : Vector2):
 	var layers = []
@@ -271,6 +338,47 @@ func createEvent(eventTrigger, eventScene, mapScript : File, xldMap : XLDMap, xl
 	
 	return eventTriggerNode
 				
+				
+func import3DMap(mapNumber: int):
+	var xld = XLD.new()
+	xld.load("res://XLDLIBS/MAPDATA%d.XLD" % (mapNumber / 100), funcref(XLDMap, "new"))
+	
+	var xldMap : XLDMap = xld.sections[mapNumber % 100]	
+	xldMap.load()
+	
+	var meshlib = load("res://xldimports/meshlib_%d.res" % (xldMap.tilesetId))
+	
+	var root = Spatial.new()
+	root.name = "XLD Map"
+	
+	
+	
+	var gridMap = GridMap.new()
+	root.add_child(gridMap)
+	gridMap.owner = root
+	gridMap.mesh_library = meshlib
+	gridMap.cell_size = Vector3(1,1,1)
+	
+	for x in xldMap.width:
+		for y in xldMap.height:
+			var wallOrObjectIndex = xldMap.wallLayer[y][x] 
+			var floorIndex = xldMap.floorLayer[y][x]
+			var ceilingIndex = xldMap.ceilingLayer[y][x]	
+					
+			var wallIndex = -1
+			if wallOrObjectIndex > 100:
+				wallIndex = wallOrObjectIndex - 100 
+				
+			if wallIndex > 0:
+				gridMap.set_cell_item(x, 0, y, wallIndex - 1 + WALL_MESHLIB_INDEX_OFFSET)
+			elif floorIndex > 0:
+				gridMap.set_cell_item(x, 0, y, floorIndex - 1) # or 22
+	
+	var packed_scene = PackedScene.new()
+	packed_scene.pack(root)
+	
+	ResourceSaver.save("res://xldimports/map_%d.tscn" % mapNumber, packed_scene)
+	
 func importMaps():
 	print("Starting import of tilemaps")
 	
@@ -514,6 +622,8 @@ func importPartyGraphics():
 		ResourceSaver.save("res://xldimports/character_%d.tscn" % partGraphicsIndex, packed_scene)
 	print("Finished import of party graphics")
 
+
+
 func _on_XLD_pressed():
 	print("Starting XLDImport")
 	
@@ -521,8 +631,12 @@ func _on_XLD_pressed():
 	#importMaps()
 	#importPartyGraphics()
 	
-	var mainExe = MainExe.new()
-	mainExe.importGraphics()
+	#var mainExe = MainExe.new()
+	#mainExe.importGraphics()
+	
+	importMeshLibrary()
+	
+	#import3DMap(122)
 	
 	#editorInterface.get_resource_filesystem().scan_resources()
 

@@ -40,6 +40,11 @@ _global_script_classes=[ {
 "path": "res://addons/xld_importer/XLDImport.gd"
 }, {
 "base": "",
+"class": "XLDLabData",
+"language": "GDScript",
+"path": "res://addons/xld_importer/XLDLabData.gd"
+}, {
+"base": "",
 "class": "XLDMap",
 "language": "GDScript",
 "path": "res://addons/xld_importer/XLDMap.gd"
@@ -61,6 +66,7 @@ _global_script_class_icons={
 "XLDIconData": "",
 "XLDIconSprite": "",
 "XLDImport": "",
+"XLDLabData": "",
 "XLDMap": "",
 "XLDMapText": "",
 "XLDSprite": ""

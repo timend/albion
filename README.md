@@ -5,4 +5,4 @@ Albion rebuild using Godot
 2. Open project in Godot.
 3. Goto "XLD" tab from the integrated plugin and press "Reimport XLDs".
 4. A new folder "xldimports" is created, containing a 3D and a 2D demo map.
-5. Run the 2D map by running the project.
+5. Run the 2D map by running the project or look at the 3D map in the Godot editor.

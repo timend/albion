@@ -4,13 +4,21 @@ extends XLD.Section
 
 var floors: Array
 var walls: Array
+var objects: Array
+var objectInfos: Array
 var paletteIndex: int
+var wallHeight: float
+var fogColor: Color
+var fogDepthBegin: float
+var fogDepthEnd: float
 
-const xldPaletteManagerClass = preload("XLDPaletteManager.gd")
-var vxldPaletteManager = xldPaletteManagerClass.new()
+var xldPaletteManager = XLDPaletteManager.new()
 
 const FLOOR_HEIGHT = 64
 const FLOOR_WIDTH = 64
+
+func toSigned16(unsigned16):
+	return unsigned16 if unsigned16 & 0x8000 == 0 else -(0x10000 - unsigned16)	
 	
 func textureFromImages(images):
 	var texture
@@ -30,20 +38,37 @@ func textureFromImages(images):
 		
 	return texture
 	
+	
+func rotateImage90(image: Image) -> Image:
+	var rotatedImage = Image.new()
+	var width = image.get_width()
+	var height = image.get_height()
+	rotatedImage.create(height, width, false, Image.FORMAT_RGBA8)
+	rotatedImage.lock()
+	image.lock()
+	
+	for x in image.get_width():
+		for y in image.get_height():
+			rotatedImage.set_pixel(height - 1 - y, x, image.get_pixel(x, y))
+	
+	rotatedImage.unlock()
+	image.unlock()
+	
+	return rotatedImage
+	
+func getImageSection(xlds: Array, textureNumber: int):
+	var fileIndex = textureNumber / 100
+	var sectionIndex = textureNumber - 1 if textureNumber < 100 else textureNumber % 100
+	
+	return xlds[fileIndex].sections[sectionIndex]
+	
 func loadContents(file: File):
 	print("Loading some XLDLabData")	
-	
-	# header ignored for now
-	file.get_buffer(38)
-	
-	var objectCount = file.get_16()
-	file.get_buffer(66 * objectCount)
-	
-	var floorCount = file.get_16()
 	
 	var xldFloorImages = []
 	var xldWallImages = []
 	var xldOverlayImages = []
+	var xldObjectImages = []
 
 	for i in 3:
 		var xldFloorImage = XLD.new()
@@ -59,24 +84,68 @@ func loadContents(file: File):
 		var xldOverlayImage = XLD.new()
 		xldOverlayImage.load("res://XLDLIBS/3DOVERL%d.XLD" % i, funcref(XLDImage, "new"))
 		xldOverlayImages.append(xldOverlayImage)
+		
+	for i in 4:
+		var xldObjectImage = XLD.new()
+		xldObjectImage.load("res://XLDLIBS/3DOBJEC%d.XLD" % i, funcref(XLDImage, "new"))
+		xldObjectImages.append(xldObjectImage)
+	
+	wallHeight = float(file.get_16()) / 256
+	
+	# header ignored for now
+	file.get_buffer(8)
+	
+	fogDepthBegin = file.get_16()
+	fogColor = Color8(file.get_16(), file.get_16(), file.get_16())
+	
+	
+	file.get_buffer(12)
+	fogDepthEnd = file.get_16()
+	
+	file.get_buffer(6)
+	
+	var objectCount = file.get_16()
+
+	objects = []
+	
+	for i in objectCount:
+		var objectData = ObjectData.new()
+		objectData.autogfxType = file.get_8()
+		file.get_8()
+		objectData.subObjects = []
+
+		for subObjectIndex in 8:
+			var subObjectData = SubObjectData.new()
+			var x = toSigned16(file.get_16())
+			var z = toSigned16(file.get_16())
+			var y = toSigned16(file.get_16())
+			subObjectData.offset = Vector3(x, y, z)
+			subObjectData.objectInfoIndex = file.get_16()
+
+			if subObjectData.objectInfoIndex > 0:
+				objectData.subObjects.append(subObjectData)
+		
+
+		objects.append(objectData)
 	
 	floors = []
 	
+	var floorCount = file.get_16()
 	for i in floorCount:
 		var floorData = FloorData.new()
 		floorData.flags = file.get_8()
 		file.get_buffer(3)
 		floorData.frames = file.get_8()
 		file.get_8()
-		var textureNumber = file.get_16() - 1 
+		var textureNumber = file.get_16()
 		file.get_16()
 		
-		var floorImage = xldFloorImages[textureNumber / 100].sections[textureNumber % 100]
+		var floorImage = getImageSection(xldFloorImages, textureNumber)
 		floorImage.paletteIndex = paletteIndex
 		floorImage.frames = floorData.frames
 		floorImage.width = FLOOR_WIDTH
 		floorImage.height = FLOOR_HEIGHT
-		floorImage.paletteManager = vxldPaletteManager
+		floorImage.paletteManager = xldPaletteManager
 		#floorImage.pixelCoordTransform = Transform2D.FLIP_Y.rotated(PI / 2)
 		floorImage.load()
 
@@ -89,8 +158,48 @@ func loadContents(file: File):
 	
 	var objectInfoCount = file.get_16()
 	
-	file.get_buffer(16 * objectInfoCount)
+#	file.get_buffer(objectInfoCount * 16)
 	
+	objectInfos = []
+	
+	for i in objectInfoCount:
+		var objectInfo = ObjectInfo.new()
+		objectInfo.flags = file.get_8()
+		objectInfo.collisionData = file.get_buffer(3)
+		
+		var textureNumber = file.get_16()
+		objectInfo.textureNumber = textureNumber
+
+		objectInfo.frames = file.get_8()
+		objectInfo.unknown = file.get_8()
+
+		objectInfo.height = file.get_16()
+		objectInfo.width = file.get_16()
+
+		var objectImage = getImageSection(xldObjectImages, textureNumber)
+		objectImage.paletteIndex = paletteIndex
+		objectImage.frames = objectInfo.frames
+		objectImage.height = objectInfo.height
+		objectImage.width = objectInfo.width
+
+		objectImage.paletteManager = xldPaletteManager
+		objectImage.load()
+
+		var rotatedImages = []
+		for image in objectImage.images:
+			rotatedImages.append(rotateImage90(image))
+
+		objectInfo.texture = textureFromImages(rotatedImages)
+		objectInfo.mapXSize = file.get_16()
+		objectInfo.mapYSize = file.get_16()
+
+		objectInfos.append(objectInfo)
+		
+#	for i in objects.size():
+#		var subObject = objectInfos[objects[i].subObjects[0].objectInfoIndex - 1]
+#		print("Object %d first subobject: textureNumber %d, width %d, height %d, frames %d, flags %d, collision %s" 
+#		% [i, subObject.textureNumber, subObject.width, subObject.height, subObject.frames, subObject.flags, subObject.collisionData])
+
 	var wallCount = file.get_16()
 	
 	for i in wallCount:
@@ -98,7 +207,7 @@ func loadContents(file: File):
 		wallData.flags = file.get_8()
 		var collision = file.get_buffer(3)
 		#print("reading texture number for wall %d at position %d from %s" % [i, file.get_position(), file.get_path()])
-		var textureNumber = file.get_16() - 1
+		var textureNumber = file.get_16()
 		#print("texture number: ", textureNumber)
 		wallData.frames = file.get_8()
 		var autoGfx = file.get_8()
@@ -106,32 +215,24 @@ func loadContents(file: File):
 		wallData.textureWidth = file.get_16()
 		wallData.textureHeight = file.get_16()
 		
-		var wallImage = xldWallImages[textureNumber / 100].sections[textureNumber % 100]
+		var wallImage = getImageSection(xldWallImages, textureNumber)
 		wallImage.paletteIndex = paletteIndex
 		wallImage.frames = wallData.frames
 		wallImage.width = wallData.textureWidth
 		wallImage.height = wallData.textureHeight
-		wallImage.paletteManager = vxldPaletteManager
+		wallImage.paletteManager = xldPaletteManager
 		wallImage.load()
 		
-		
 	
-#		0	2	texture number	texture number (→ 3DOVERL)
-#2	1	animations	#animations
-#3	1	write zero	write 0×00 bytes? (0: yes, else: no)
-#4	2	y-offset	y-offset on the wall texture
-#6	2	x-offset	x-offset on the wall texture
-#8	2	texture width	texture width
-#10	2	texture height	texture height
 		var overlayCount = file.get_16()
 		wallData.overlayCount = overlayCount
 		for overlayIndex in overlayCount:
-			var overlayTextureNumber = file.get_16() - 1
+			var overlayTextureNumber = file.get_16() 
 			var overlayFrames = file.get_8()
 			var writeZero = file.get_8()
-			print("WriteZero: ", writeZero)
-			var overlayOffsetX = file.get_16()
-			var overlayOffsetY = file.get_16()
+#			print("WriteZero: ", writeZero)
+			var overlayOffsetX = toSigned16(file.get_16())
+			var overlayOffsetY = toSigned16(file.get_16())
 			var overlayWidth = file.get_16()
 			var overlayHeight = file.get_16()
 			
@@ -141,12 +242,12 @@ func loadContents(file: File):
 			
 			#assert(wallData.frames == 1, "Overlay on animated wall")
 			
-			var overlayImage = xldOverlayImages[overlayTextureNumber / 100].sections[overlayTextureNumber % 100]
+			var overlayImage = getImageSection(xldOverlayImages, overlayTextureNumber)
 			overlayImage.paletteIndex = paletteIndex
 			overlayImage.frames = overlayFrames
 			overlayImage.width = overlayWidth
 			overlayImage.height = overlayHeight
-			overlayImage.paletteManager = vxldPaletteManager
+			overlayImage.paletteManager = xldPaletteManager
 			overlayImage.load()
 			
 			for image in wallImage.images:
@@ -174,6 +275,26 @@ class WallData:
 	var texture: Texture
 	var overlayCount: int
 	
+class ObjectData:
+	var autogfxType: int
+	var subObjects: Array
+	
+class SubObjectData:
+	var offset: Vector3
+	var objectInfoIndex: int
+	
+class ObjectInfo:
+	var texture: Texture
+	var width
+	var height
+	var textureNumber
+	var unknown
+	var mapXSize: int
+	var mapYSize: int
+	var collisionData
+	var flags
+	var frames
+	
 class XLDImage:
 	extends XLD.Section
 	
@@ -186,8 +307,8 @@ class XLDImage:
 	var paletteManager
 	
 	func loadContents(file: File):	
-		assert(length == width * height * frames, 
-		"Unexpected length in bytes: %d. Width: %d, Height: %d, Frames Count: %d, index: %d, file: %s" % [length, width, height, frames, index, file.get_path()])
+#		assert(length == width * height * frames, 
+#		"Unexpected length in bytes: %d. Width: %d, Height: %d, Frames Count: %d, index: %d, file: %s" % [length, width, height, frames, index, file.get_path()])
 
 		images = []
 		

@@ -30,8 +30,6 @@ var floorLayer: Array
 var wallLayer: Array
 var ceilingLayer: Array
 
-const xldPaletteManagerClass = preload("XLDPaletteManager.gd")
-
 static func loadTiles(width, height, layers, file):
 	layers.append([])
 	layers.append([])

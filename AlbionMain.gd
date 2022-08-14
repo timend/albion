@@ -111,6 +111,7 @@ func loadMainGraphics():
 	
 func importGraphics():
 	loadMainGraphics()
+	var xldPaletteManager = XLDPaletteManager.new()
 	
 	var mainExe : File = File.new()
 	mainExe.open("res://XLDLIBS/Main.exe", File.READ)

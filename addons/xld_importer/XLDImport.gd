@@ -9,6 +9,7 @@ func _ready():
 var editorInterface: EditorInterface
 
 const WALL_MESHLIB_INDEX_OFFSET = 4096
+const OBJECT_MESHLIB_INDEX_OFFSET = 2*4096
 
 func importTilesets():
 	print("Starting import of tilesets")
@@ -136,15 +137,14 @@ func importMeshLibrary():
 			mesh.center_offset = Vector3(0, 0, -0.5)
 			
 			var material = SpatialMaterial.new()
-		
 			material.albedo_texture = floorData.texture
-
+			material.params_cull_mode = SpatialMaterial.CULL_DISABLED
 			mesh.material = material
 			
 			meshLibrary.set_item_mesh(floorIndex, mesh)
 			meshLibrary.set_item_name(floorIndex, "Floor %d" % floorIndex)
 			meshLibrary.set_item_preview(floorIndex, floorData.texture)
-			var transform = Transform.IDENTITY.rotated(Vector3.RIGHT, -PI/2).rotated(Vector3.UP, -PI/2)
+			var transform = Transform.IDENTITY.translated(Vector3(0,0,0)).rotated(Vector3.RIGHT, -PI/2).rotated(Vector3.UP, -PI/2)
 			meshLibrary.set_item_mesh_transform(floorIndex, transform)
 		
 		for wallIndex in labData.walls.size():
@@ -152,20 +152,70 @@ func importMeshLibrary():
 			var itemIndex = wallIndex + WALL_MESHLIB_INDEX_OFFSET
 			meshLibrary.create_item(itemIndex)
 			var mesh = CubeMesh.new()
-			mesh.size = Vector3(1, 1, 1)
+			mesh.size = Vector3(1, labData.wallHeight, 1)
 	
 			var material = SpatialMaterial.new()
 			material.albedo_texture = wallData.texture
 			material.uv1_scale = Vector3(3, 2, 1)
+			material.flags_transparent = true
+			material.params_use_alpha_scissor = true
 			mesh.material = material
 			
 			meshLibrary.set_item_mesh(itemIndex, mesh)
 			meshLibrary.set_item_name(itemIndex, "Wall %d (%d overlays)" % [wallIndex, wallData.overlayCount])
 			meshLibrary.set_item_preview(itemIndex, wallData.texture)
+			var transform = Transform.IDENTITY.translated(Vector3(0, (labData.wallHeight - 1) / 2, 0))
+			meshLibrary.set_item_mesh_transform(itemIndex, transform)
+			
+		for objectIndex in labData.objects.size():
+			var objectData = labData.objects[objectIndex]
+			var itemIndex = objectIndex + OBJECT_MESHLIB_INDEX_OFFSET
+			meshLibrary.create_item(itemIndex)
+			
+			var arrayMesh = ArrayMesh.new()
+			
+			var firstTexture = null
+			var firstSubObject = null
+			var firstObjectInfo = null
+			
+			for subObject in objectData.subObjects:
+				var objectInfo = labData.objectInfos[subObject.objectInfoIndex-1]
+				
+				if !firstTexture:
+					firstTexture = objectInfo.texture
+					firstSubObject = subObject
+					firstObjectInfo = objectInfo
+				
+				var mesh = QuadMesh.new()
+				
+				mesh.size = Vector2(objectInfo.mapXSize, objectInfo.mapYSize) / 256
+				#mesh.center_offset = Vector3(0, (float(objectInfo.mapYSize) / 256 - 1)/2, 0)
+				mesh.center_offset = Vector3(subObject.offset.x/512 - 0.5, 
+				
+				(float(objectInfo.mapYSize) / 256)/2 + subObject.offset.y / 512 - 0.5, subObject.offset.z / 512 - 0.5) 
+								
+				var material : ShaderMaterial = ShaderMaterial.new()
+				material.shader = preload("res://BillboardObject.gdshader")
+				material.set_shader_param("texture_albedo", objectInfo.texture)
+				material.set_shader_param("pivot_transform", Transform.IDENTITY.translated(-mesh.center_offset))
+				var surfaceIndex = arrayMesh.get_surface_count()
+				arrayMesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.get_mesh_arrays())
+				arrayMesh.surface_set_material(surfaceIndex, material)
+			
+			meshLibrary.set_item_mesh(itemIndex, arrayMesh)
+			meshLibrary.set_item_name(itemIndex, "Object %d texture %d x %d mapsize %d x %d offset %s" 
+			% [objectIndex, firstTexture.get_width(), firstTexture.get_height(), firstObjectInfo.mapXSize, firstObjectInfo.mapYSize, firstSubObject.offset])
+			meshLibrary.set_item_preview(itemIndex, firstTexture)
+			
 		
 		meshLibrary.set_meta("mesh_meta", meshMeta)	
+		meshLibrary.set_meta("wall_height", labData.wallHeight)
+		
+		meshLibrary.set_meta("fog_color", labData.fogColor)
+		meshLibrary.set_meta("fog_depth_begin", labData.fogDepthBegin)
+		meshLibrary.set_meta("fog_depth_end", labData.fogDepthEnd)
 
-		ResourceSaver.save("res://xldimports/meshlib_%d_12.res" % [labdataIndex + 1], meshLibrary)
+		ResourceSaver.save("res://xldimports/meshlib_%d.res" % [labdataIndex], meshLibrary)
 	print("Finished import of tilesets")
 
 func addLayers(parent: Node2D, owner: Node2D, name: String, tileSet: TileSet, cellYSort: bool, layerOffset : Vector2):
@@ -353,11 +403,44 @@ func import3DMap(mapNumber: int):
 	
 	
 	
-	var gridMap = GridMap.new()
-	root.add_child(gridMap)
-	gridMap.owner = root
-	gridMap.mesh_library = meshlib
-	gridMap.cell_size = Vector3(1,1,1)
+	
+	
+	var ceilingMap = GridMap.new()
+	root.add_child(ceilingMap)
+	ceilingMap.name = "Ceiling"
+	ceilingMap.owner = root
+	ceilingMap.mesh_library = meshlib
+	ceilingMap.cell_size = Vector3(1,1,1)
+	ceilingMap.translation = Vector3(0, meshlib.get_meta("wall_height"), 0)
+	
+	var wallMap = GridMap.new()
+	root.add_child(wallMap)
+	wallMap.name = "Wall"
+	wallMap.owner = root
+	wallMap.mesh_library = meshlib
+	wallMap.cell_size = Vector3(1,1,1)
+	
+	
+	var floorMap = GridMap.new()
+	root.add_child(floorMap)
+	floorMap.name = "Floor"
+	floorMap.owner = root
+	floorMap.mesh_library = meshlib
+	floorMap.cell_size = Vector3(1,1,1)
+	
+	var worldEnvironment = WorldEnvironment.new()
+	
+	root.add_child(worldEnvironment)
+	worldEnvironment.owner = root
+	var environment = Environment.new()
+	worldEnvironment.environment = environment
+	
+	environment.fog_color = meshlib.get_meta("fog_color")
+	environment.fog_depth_begin = float(meshlib.get_meta("fog_depth_begin")) / 256
+	environment.fog_depth_end = meshlib.get_meta("fog_depth_end")
+	environment.fog_enabled = true
+	
+	environment.ambient_light_color = Color.white
 	
 	for x in xldMap.width:
 		for y in xldMap.height:
@@ -366,13 +449,25 @@ func import3DMap(mapNumber: int):
 			var ceilingIndex = xldMap.ceilingLayer[y][x]	
 					
 			var wallIndex = -1
+			var objectIndex = -1
+			
 			if wallOrObjectIndex > 100:
 				wallIndex = wallOrObjectIndex - 100 
+			else:
+				objectIndex = wallOrObjectIndex
 				
 			if wallIndex > 0:
-				gridMap.set_cell_item(x, 0, y, wallIndex - 1 + WALL_MESHLIB_INDEX_OFFSET)
-			elif floorIndex > 0:
-				gridMap.set_cell_item(x, 0, y, floorIndex - 1) # or 22
+				wallMap.set_cell_item(x, 0, y, wallIndex - 1 + WALL_MESHLIB_INDEX_OFFSET)
+			
+			if objectIndex > 0:
+				wallMap.set_cell_item(x, 0, y, objectIndex - 1 + OBJECT_MESHLIB_INDEX_OFFSET)
+			
+			if floorIndex > 0:
+				floorMap.set_cell_item(x, 0, y, floorIndex - 1)
+		
+			if ceilingIndex > 0:
+				ceilingMap.set_cell_item(x, 0, y, ceilingIndex - 1)
+				
 	
 	var packed_scene = PackedScene.new()
 	packed_scene.pack(root)
@@ -627,8 +722,8 @@ func importPartyGraphics():
 func _on_XLD_pressed():
 	print("Starting XLDImport")
 	
-	#importTilesets()
-	#importMaps()
+	importTilesets()
+	importMaps()
 	#importPartyGraphics()
 	
 	#var mainExe = MainExe.new()
@@ -636,10 +731,9 @@ func _on_XLD_pressed():
 	
 	importMeshLibrary()
 	
-	#import3DMap(122)
+	import3DMap(122)
 	
 	#editorInterface.get_resource_filesystem().scan_resources()
 
 	
 	print("Finished XLDImport!")
-

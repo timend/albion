@@ -15,6 +15,8 @@ func loadContents(file: File):
 	file.get_8()
 	framesCount = file.get_8()
 	
+	var xldPaletteManager = XLDPaletteManager.new()
+	
 	assert(length == 6 + width * height * framesCount, "Unexpected length in bytes: %d. Width: %d, Height: %d, Frames Count: %d" % [length, width, height, framesCount])
 
 	image = Image.new()

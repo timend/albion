@@ -54,6 +54,11 @@ _global_script_classes=[ {
 "language": "GDScript",
 "path": "res://addons/xld_importer/XLDMapText.gd"
 }, {
+"base": "Reference",
+"class": "XLDPaletteManager",
+"language": "GDScript",
+"path": "res://addons/xld_importer/XLDPaletteManager.gd"
+}, {
 "base": "",
 "class": "XLDSprite",
 "language": "GDScript",
@@ -69,6 +74,7 @@ _global_script_class_icons={
 "XLDLabData": "",
 "XLDMap": "",
 "XLDMapText": "",
+"XLDPaletteManager": "",
 "XLDSprite": ""
 }
 
@@ -77,10 +83,6 @@ _global_script_class_icons={
 config/name="Albion"
 run/main_scene="res://main.tscn"
 config/icon="res://icon.png"
-
-[autoload]
-
-xldPaletteManager="*res://addons/xld_importer/XLDPaletteManager.gd"
 
 [debug]
 

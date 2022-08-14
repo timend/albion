@@ -9,12 +9,9 @@ var iconCount: int
 var image: Image
 var paletteIndex: int
 
-const xldPaletteManagerClass = preload("XLDPaletteManager.gd")
-
-
 func loadContents(file: File):
 	print("Loading some XLDIconSprites")
-	var vxldPaletteManager = xldPaletteManagerClass.new()
+	var xldPaletteManager = XLDPaletteManager.new()
 	
 	iconCount = length / width / height	
 	
@@ -26,7 +23,7 @@ func loadContents(file: File):
 		for y in height:
 			for x in width:
 				var colorIndex = file.get_8()
-				var color = vxldPaletteManager.getColor(paletteIndex, colorIndex)
+				var color = xldPaletteManager.getColor(paletteIndex, colorIndex)
 				var offset = getIconOffset(iconIndex)
 				image.set_pixel(offset.x + x, offset.y + y, color)
 	image.unlock()
